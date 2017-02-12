@@ -8,6 +8,8 @@ const languageString = {
         "translation": {
             "WELCOME_MESSAGE": "Schalter ist gestartet. ",
             "STOP_MESSAGE": "Beendet. ",
+            "ON_MESSAGE": `${led} ist an.`,
+            "OFF_MESSAGE": `${led} ist aus.`,
             "HELP_MESSAGE": `Schalte ${led} an oder Schalte ${led} aus.`,
             "HELP_REPROMPT": `Schalte ${led} an oder Schalte ${led} aus.`,
             "ERROR_MESSAGE": "Das hat leider nicht funktioniert. "
@@ -18,10 +20,11 @@ const languageString = {
 const password = process.env.PASSWORD;
 const username = process.env.USERNAME;
 const deviceid = process.env.DEVICEID;
+const appid    = process.env.APPID;
 
 exports.handler = function(event, context, callback) {
     var alexa = Alexa.handler(event, context);
-    alexa.appId = "amzn1.ask.skill.860835bf-d7b4-45ef-82f7-2d0fb6b6710d";  
+    alexa.appId = appid;  
     alexa.resources = languageString;
     alexa.registerHandlers(handlers);
     alexa.execute();
@@ -29,60 +32,49 @@ exports.handler = function(event, context, callback) {
 
 const handlers = {
     'LaunchRequest': function () {
-        const speechOutput = this.t('WELCOME_MESSAGE');
-        this.emit(':ask',speechOutput);
-
-        // hier token holen und über session attribute mitführen (outer promise)
-    },
-    'SwitchOnIntent': function () {
         const self = this; 
-        console.log(username+' '+password);
         p.particle_get_token(username,password).then(  
             access_token => {
-                console.log(access_token);
-                p.particle_function_call(access_token,deviceid,'switchon').then( 
-
-                    body => {
-                        const speechOutput = `${led} ist an.`; //+' '+access_token+' '+deviceid+' '+username+' '+password; 
-                        self.emit(':tell', speechOutput); 
-                    },
-                    err => {
-                        console.log(`${err}`);
-                        const speechOutput = this.t('ERROR_MESSAGE'+access_token);
-                        self.emit(':tell',speechOutput);
-                         //beenden
-                    }
-                );
+                self.attributes["token"] = access_token;
+                const speechOutput = self.t('WELCOME_MESSAGE');
+                self.emit(':ask',speechOutput);
+      
             },
             err => {
                 console.log(`Fehler: ${err}`);
             }
         );
     },
+    'SwitchOnIntent': function () {
+        this.emit('Call','switchon',this.t('ON_MESSAGE')); 
+    }      
+    ,
     'SwitchOffIntent': function () {
+        this.emit('Call','switchoff',this.t('OFF_MESSAGE'));     
+    },
+    'Call': function(func,message) {
         const self = this; 
-        console.log(username+' '+password);
-        p.particle_get_token(username,password).then(  
-            access_token => {
-                console.log(access_token);
-                p.particle_function_call(access_token,deviceid,'switchoff').then( 
+        if(this.attributes["token"]) {
+            let access_token=this.attributes["token"];
+            p.particle_function_call(access_token,deviceid,func).then( 
+                body => {
+                    const speechOutput = message; 
+                    self.emit(':ask', speechOutput); 
+                },
+                err => {
+                    console.log(`${err}`);
+                    const speechOutput = this.t('ERROR_MESSAGE');
+                    self.emit(':tell',speechOutput);
+                    // TODO: end here
+                }
+            );
+        }
+        else {
+           const speechOutput = this.t('ERROR_MESSAGE');
+           self.emit(':tell',speechOutput); 
+           // TODO: end here
+        }
 
-                    body => {
-                        const speechOutput = `${led} ist aus.`; //+' '+access_token+' '+deviceid+' '+username+' '+password; 
-                        self.emit(':tell', speechOutput); 
-                    },
-                    err => {
-                        console.log(`${err}`);
-                        const speechOutput = this.t('ERROR_MESSAGE'+access_token);
-                        self.emit(':tell',speechOutput);
-                         //beenden
-                    }
-                );
-            },
-            err => {
-                console.log(`Fehler: ${err}`);
-            }
-        ); 
     },
     'AMAZON.HelpIntent': function () {
         const speechOutput = this.t('HELP_MESSAGE');
